@@ -275,6 +275,27 @@ function App() {
     return new Date(year, month - 1, day)
   }, [selectedDate])
   const canCreateService = workspace.customers.length > 0 && workspace.vehicles.length > 0
+  const serviceCreationTitle = canCreateService
+    ? 'Crea un nuovo servizio'
+    : workspace.customers.length === 0
+      ? 'Aggiungi il primo cliente per creare un servizio'
+      : 'Aggiungi il primo mezzo per creare un servizio'
+
+  function requestServiceCreation() {
+    if (workspace.customers.length === 0) {
+      setActiveView('customers')
+      setToast('Aggiungi il primo cliente, poi potrai creare il servizio.')
+      return
+    }
+
+    if (workspace.vehicles.length === 0) {
+      setActiveView('vehicles')
+      setToast('Aggiungi il primo mezzo, poi potrai creare il servizio.')
+      return
+    }
+
+    setServiceFormOpen(true)
+  }
 
   function addService(draft: ServiceDraft) {
     setWorkspace((current) => {
@@ -1076,13 +1097,8 @@ function App() {
             <button
               className="primary-button"
               type="button"
-              disabled={!canCreateService}
-              onClick={() => setServiceFormOpen(true)}
-              title={
-                canCreateService
-                  ? 'Crea un nuovo servizio'
-                  : 'Aggiungi almeno un cliente e un mezzo prima di creare un servizio'
-              }
+              onClick={requestServiceCreation}
+              title={serviceCreationTitle}
             >
               <Plus size={17} />
               Nuovo servizio
@@ -1096,13 +1112,9 @@ function App() {
       <button
         className="mobile-fab"
         type="button"
-        disabled={!canCreateService}
-        onClick={() => setServiceFormOpen(true)}
-        title={
-          canCreateService
-            ? 'Crea un nuovo servizio'
-            : 'Aggiungi almeno un cliente e un mezzo prima di creare un servizio'
-        }
+        aria-label={serviceCreationTitle}
+        onClick={requestServiceCreation}
+        title={serviceCreationTitle}
       >
         <Plus size={22} />
       </button>
