@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   Clock3,
+  Copy,
   Database,
   Download,
   FileDown,
@@ -40,6 +41,11 @@ import {
   downloadIcs,
   getGoogleCalendarInsertPayload,
 } from './lib/calendar'
+import {
+  createGoogleCalendarEvent,
+  createProviderInvoice,
+  requestGoogleAuthorizationUrl,
+} from './lib/backend'
 import {
   combineLocalDateAndTime,
   createId,
@@ -147,6 +153,36 @@ function App() {
   }, [toast])
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const calendarStatus = params.get('calendar')
+    if (!calendarStatus) return
+
+    if (calendarStatus === 'connected') {
+      window.setTimeout(() => {
+        const syncedAt = new Date().toISOString()
+        setWorkspace((current) => ({
+          ...current,
+          integrations: current.integrations.map((integration) =>
+            integration.id === 'google-calendar'
+              ? { ...integration, status: 'connected', lastSync: syncedAt }
+              : integration,
+          ),
+          updatedAt: syncedAt,
+        }))
+        setToast('Google Calendar collegato.')
+      }, 0)
+    } else {
+      window.setTimeout(() => setToast('Collegamento Google Calendar non completato.'), 0)
+    }
+
+    params.delete('calendar')
+    params.delete('reason')
+    const query = params.toString()
+    const cleanUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`
+    window.history.replaceState({}, '', cleanUrl)
+  }, [])
+
+  useEffect(() => {
     if (!supabase) {
       window.setTimeout(() => setCloudStatus('disabled'), 0)
       return undefined
@@ -250,7 +286,7 @@ function App() {
         end: combineLocalDateAndTime(draft.date, draft.endTime),
         passengers: draft.passengers,
         vehicleId: draft.vehicleId,
-        driver: current.settings.operatorName || 'Operatore',
+        driver: current.settings.operatorName,
         status: 'pending',
         serviceType: draft.serviceType,
         price: draft.price,
@@ -300,7 +336,7 @@ function App() {
       vatNumber: draft.vatNumber.trim() || undefined,
       address: draft.address.trim() || undefined,
       preferredPickup: draft.preferredPickup.trim() || undefined,
-      notes: draft.notes.trim() || 'Nessuna nota inserita.',
+      notes: draft.notes.trim(),
       tags: tags.length > 0 ? tags : [fallbackTag],
     }
 
@@ -333,7 +369,7 @@ function App() {
         gross,
         status: 'draft',
         validUntil: new Date(draft.validUntil).toISOString(),
-        notes: draft.notes.trim() || 'Preventivo creato manualmente.',
+        notes: draft.notes.trim(),
       }
 
       return {
@@ -379,7 +415,7 @@ function App() {
         status: 'confirmed',
         serviceType: quote.serviceType,
         price: quote.gross,
-        paymentMethod: 'Da definire',
+        paymentMethod: '',
         invoiceStatus: 'to-issue',
         source: 'manual',
         notes: `Creato da ${quote.number}. ${quote.notes}`,
@@ -420,7 +456,7 @@ function App() {
       insuranceUntil: combineLocalDateAndTime(draft.insuranceUntil, '09:00'),
       revisionUntil: combineLocalDateAndTime(draft.revisionUntil, '09:00'),
       nccPermitUntil: combineLocalDateAndTime(draft.nccPermitUntil, '09:00'),
-      notes: draft.notes.trim() || 'Nessuna nota inserita.',
+      notes: draft.notes.trim(),
     }
 
     setWorkspace((current) => ({
@@ -439,7 +475,8 @@ function App() {
 
     setWorkspace((current) => {
       const gross = service.price
-      const net = Math.round((gross / 1.22) * 100) / 100
+      const vatRate = current.settings.defaultVatRate
+      const net = Math.round((gross / (1 + vatRate / 100)) * 100) / 100
       const invoice: Invoice = {
         id: createId('inv'),
         number: getNextDocumentNumber(current.invoices, 'FAT-2026', 0),
@@ -449,7 +486,7 @@ function App() {
         dueAt: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
         status: 'sent',
         net,
-        vatRate: 22,
+        vatRate,
         gross,
         paymentMethod: service.paymentMethod,
       }
@@ -487,7 +524,7 @@ function App() {
     setToast('Pagamento registrato.')
   }
 
-  function resetDemoData() {
+  function clearWorkspaceData() {
     setWorkspace(resetWorkspaceState())
     setToast('Archivio svuotato e pronto per dati reali.')
   }
@@ -508,6 +545,48 @@ function App() {
     setToast('File calendario del servizio esportato.')
   }
 
+  function connectGoogleCalendar() {
+    void requestGoogleAuthorizationUrl(window.location.href)
+      .then((url) => {
+        window.location.assign(url)
+      })
+      .catch((error: Error) => setToast(error.message))
+  }
+
+  function syncServiceToGoogle(service: Service) {
+    const customer = workspace.customers.find((item) => item.id === service.customerId)
+    const vehicle = workspace.vehicles.find((item) => item.id === service.vehicleId)
+    const payload = getGoogleCalendarInsertPayload(service, customer, vehicle)
+
+    void createGoogleCalendarEvent(payload)
+      .then((result) => {
+        const syncedAt = new Date().toISOString()
+        setWorkspace((current) => ({
+          ...current,
+          services: current.services.map((item) =>
+            item.id === service.id
+              ? {
+                  ...item,
+                  sync: {
+                    ...item.sync,
+                    googleEventId: result.eventId,
+                    lastSyncedAt: syncedAt,
+                  },
+                }
+              : item,
+          ),
+          integrations: current.integrations.map((integration) =>
+            integration.id === 'google-calendar'
+              ? { ...integration, status: 'connected', lastSync: syncedAt }
+              : integration,
+          ),
+          updatedAt: syncedAt,
+        }))
+        setToast('Evento creato su Google Calendar.')
+      })
+      .catch((error: Error) => setToast(error.message))
+  }
+
   function copyGooglePayload(service: Service) {
     const customer = workspace.customers.find((item) => item.id === service.customerId)
     const vehicle = workspace.vehicles.find((item) => item.id === service.vehicleId)
@@ -526,6 +605,49 @@ function App() {
       .writeText(payload)
       .then(() => setToast('Payload Google Calendar copiato.'))
       .catch(() => setToast('Non riesco a copiare il payload.'))
+  }
+
+  function sendInvoiceToProvider(invoice: Invoice) {
+    const customer = getCustomer(workspace, invoice.customerId)
+    const invoiceServices = workspace.services.filter((service) =>
+      invoice.serviceIds.includes(service.id),
+    )
+
+    void createProviderInvoice({
+      invoice,
+      customer,
+      services: invoiceServices,
+      settings: workspace.settings,
+    })
+      .then((result) => {
+        const syncedAt = new Date().toISOString()
+        const externalId = result.externalId || (result.number ? String(result.number) : undefined)
+        setWorkspace((current) => ({
+          ...current,
+          invoices: current.invoices.map((item) =>
+            item.id === invoice.id
+              ? {
+                  ...item,
+                  externalId,
+                  status: item.status === 'paid' ? 'paid' : 'sent',
+                }
+              : item,
+          ),
+          services: current.services.map((service) =>
+            invoice.serviceIds.includes(service.id)
+              ? { ...service, invoiceStatus: service.invoiceStatus === 'paid' ? 'paid' : 'sent' }
+              : service,
+          ),
+          integrations: current.integrations.map((integration) =>
+            integration.id === 'invoicing'
+              ? { ...integration, status: 'connected', lastSync: syncedAt }
+              : integration,
+          ),
+          updatedAt: syncedAt,
+        }))
+        setToast(`Fattura inviata al provider ${result.provider}.`)
+      })
+      .catch((error: Error) => setToast(error.message))
   }
 
   function exportBackup() {
@@ -721,6 +843,7 @@ function App() {
         onDownloadIcs={exportServiceIcs}
         onExportAll={exportAllIcs}
         onStatusChange={updateServiceStatus}
+        onSyncGoogle={syncServiceToGoogle}
       />
     ) : activeView === 'agenda' ? (
       <AgendaView
@@ -732,6 +855,7 @@ function App() {
         onDateChange={setSelectedDate}
         onDownloadIcs={exportServiceIcs}
         onStatusChange={updateServiceStatus}
+        onSyncGoogle={syncServiceToGoogle}
       />
     ) : activeView === 'services' ? (
       <ServicesView
@@ -741,6 +865,7 @@ function App() {
         onCreateInvoice={createInvoiceFromService}
         onDownloadIcs={exportServiceIcs}
         onStatusChange={updateServiceStatus}
+        onSyncGoogle={syncServiceToGoogle}
       />
     ) : activeView === 'quotes' ? (
       <QuotesView
@@ -759,7 +884,12 @@ function App() {
         onVehicleStatusChange={updateVehicleStatus}
       />
     ) : activeView === 'invoices' ? (
-      <InvoicesView state={workspace} onMarkPaid={markInvoicePaid} onPrintInvoice={printInvoice} />
+      <InvoicesView
+        state={workspace}
+        onMarkPaid={markInvoicePaid}
+        onPrintInvoice={printInvoice}
+        onSendInvoice={sendInvoiceToProvider}
+      />
     ) : activeView === 'data' ? (
       <DataView
         cloudEmail={cloudEmail}
@@ -771,7 +901,7 @@ function App() {
         onExportServicesCsv={exportServicesCsv}
         onImportBackup={importBackup}
         onRequestCloudLogin={requestCloudLogin}
-        onResetDemo={resetDemoData}
+        onClearWorkspace={clearWorkspaceData}
         onSignOutCloud={disconnectCloud}
       />
     ) : (
@@ -779,8 +909,10 @@ function App() {
         now={now}
         state={workspace}
         services={sortedServices}
+        onConnectGoogleCalendar={connectGoogleCalendar}
         onCopyGooglePayload={copyGooglePayload}
         onExportAll={exportAllIcs}
+        onSyncGoogle={syncServiceToGoogle}
       />
     )
 
@@ -821,6 +953,24 @@ function App() {
         </div>
       </aside>
 
+      <nav className="mobile-tabbar" aria-label="Navigazione mobile">
+        {navItems.map((item) => {
+          const Icon = item.icon
+          return (
+            <button
+              className={activeView === item.view ? 'nav-item active' : 'nav-item'}
+              key={item.view}
+              type="button"
+              aria-current={activeView === item.view ? 'page' : undefined}
+              onClick={() => setActiveView(item.view)}
+            >
+              <Icon size={18} />
+              <span>{item.label}</span>
+            </button>
+          )
+        })}
+      </nav>
+
       <main className="main-surface">
         <header className="topbar">
           <div>
@@ -828,7 +978,7 @@ function App() {
             <h1>{formatDateLine(now)}</h1>
           </div>
           <div className="topbar-actions">
-            <button className="ghost-button" type="button" onClick={resetDemoData}>
+            <button className="ghost-button" type="button" onClick={clearWorkspaceData}>
               Svuota dati
             </button>
             <button
@@ -850,6 +1000,20 @@ function App() {
 
         {activeContent}
       </main>
+
+      <button
+        className="mobile-fab"
+        type="button"
+        disabled={!canCreateService}
+        onClick={() => setServiceFormOpen(true)}
+        title={
+          canCreateService
+            ? 'Crea un nuovo servizio'
+            : 'Aggiungi almeno un cliente e un mezzo prima di creare un servizio'
+        }
+      >
+        <Plus size={22} />
+      </button>
 
       {isServiceFormOpen ? (
         <ServiceForm
@@ -874,6 +1038,7 @@ interface ServiceActions {
   onCreateInvoice: (service: Service) => void
   onDownloadIcs: (service: Service) => void
   onStatusChange: (serviceId: string, status: ServiceStatus) => void
+  onSyncGoogle: (service: Service) => void
 }
 
 function DashboardView({
@@ -884,6 +1049,7 @@ function DashboardView({
   onDownloadIcs,
   onExportAll,
   onStatusChange,
+  onSyncGoogle,
 }: WorkspaceProps &
   ServiceActions & {
     now: Date
@@ -964,6 +1130,7 @@ function DashboardView({
           onCreateInvoice={onCreateInvoice}
           onDownloadIcs={onDownloadIcs}
           onStatusChange={onStatusChange}
+          onSyncGoogle={onSyncGoogle}
         />
       </section>
     </section>
@@ -979,6 +1146,7 @@ function AgendaView({
   onDateChange,
   onDownloadIcs,
   onStatusChange,
+  onSyncGoogle,
 }: WorkspaceProps &
   ServiceActions & {
     selectedDate: string
@@ -1016,6 +1184,7 @@ function AgendaView({
             onCreateInvoice={onCreateInvoice}
             onDownloadIcs={onDownloadIcs}
             onStatusChange={onStatusChange}
+            onSyncGoogle={onSyncGoogle}
           />
         </section>
       </div>
@@ -1030,6 +1199,7 @@ function ServicesView({
   onCreateInvoice,
   onDownloadIcs,
   onStatusChange,
+  onSyncGoogle,
 }: WorkspaceProps &
   ServiceActions & {
     onCopyGooglePayload: (service: Service) => void
@@ -1084,6 +1254,7 @@ function ServicesView({
           onCreateInvoice={onCreateInvoice}
           onDownloadIcs={onDownloadIcs}
           onStatusChange={onStatusChange}
+          onSyncGoogle={onSyncGoogle}
           onCopyGooglePayload={onCopyGooglePayload}
         />
       </section>
@@ -1165,7 +1336,7 @@ function QuotesView({
               <input
                 value={draft.title}
                 onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-                placeholder="Transfer aeroporto"
+                placeholder="Titolo del servizio"
                 required
               />
             </label>
@@ -1458,7 +1629,7 @@ function CustomersView({
               <input
                 value={draft.tags}
                 onChange={(event) => setDraft({ ...draft, tags: event.target.value })}
-                placeholder="hotel, fattura"
+                placeholder="Tag separati da virgola"
               />
             </label>
             <label>
@@ -1579,7 +1750,7 @@ function VehiclesView({
               <input
                 value={draft.name}
                 onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                placeholder="Mercedes Classe E"
+                placeholder="Nome mezzo"
                 required
               />
             </label>
@@ -1588,7 +1759,7 @@ function VehiclesView({
               <input
                 value={draft.plate}
                 onChange={(event) => setDraft({ ...draft, plate: event.target.value })}
-                placeholder="AA 000 AA"
+                placeholder="Targa"
                 required
               />
             </label>
@@ -1735,7 +1906,7 @@ function DataView({
   onExportServicesCsv,
   onImportBackup,
   onRequestCloudLogin,
-  onResetDemo,
+  onClearWorkspace,
   onSignOutCloud,
 }: {
   cloudEmail: string
@@ -1747,7 +1918,7 @@ function DataView({
   onExportServicesCsv: () => void
   onImportBackup: (file: File) => void
   onRequestCloudLogin: (email: string) => void
-  onResetDemo: () => void
+  onClearWorkspace: () => void
   onSignOutCloud: () => void
 }) {
   const storedSize = formatBytes(new Blob([JSON.stringify(state)]).size)
@@ -1855,7 +2026,7 @@ function DataView({
             I dati sono salvati nel browser e sincronizzabili con Supabase quando il cloud e
             configurato. Lo svuotamento torna a un archivio neutro senza dati precompilati.
           </p>
-          <button className="ghost-button" type="button" onClick={onResetDemo}>
+          <button className="ghost-button" type="button" onClick={onClearWorkspace}>
             Svuota archivio
           </button>
         </section>
@@ -1868,10 +2039,12 @@ function InvoicesView({
   state,
   onMarkPaid,
   onPrintInvoice,
+  onSendInvoice,
 }: {
   state: WorkspaceState
   onMarkPaid: (invoiceId: string) => void
   onPrintInvoice: (invoice: Invoice) => void
+  onSendInvoice: (invoice: Invoice) => void
 }) {
   const openTotal = state.invoices
     .filter((invoice) => invoice.status !== 'paid')
@@ -1904,6 +2077,7 @@ function InvoicesView({
                 <div>
                   <strong>{invoice.number}</strong>
                   <span>{customer?.name ?? 'Cliente non trovato'}</span>
+                  {invoice.externalId ? <small>Provider {invoice.externalId}</small> : null}
                 </div>
                 <div>
                   <small>Scadenza</small>
@@ -1922,6 +2096,19 @@ function InvoicesView({
                     title="Stampa fattura"
                   >
                     <Printer size={16} />
+                  </button>
+                  <button
+                    className="table-action"
+                    type="button"
+                    disabled={Boolean(invoice.externalId)}
+                    onClick={() => onSendInvoice(invoice)}
+                    title={
+                      invoice.externalId
+                        ? 'Fattura gia inviata al provider'
+                        : 'Invia al provider fatturazione'
+                    }
+                  >
+                    <Send size={16} />
                   </button>
                   <button
                     className="table-action"
@@ -1946,12 +2133,16 @@ function IntegrationsView({
   now,
   state,
   services,
+  onConnectGoogleCalendar,
   onCopyGooglePayload,
   onExportAll,
+  onSyncGoogle,
 }: WorkspaceProps & {
   now: Date
+  onConnectGoogleCalendar: () => void
   onCopyGooglePayload: (service: Service) => void
   onExportAll: () => void
+  onSyncGoogle: (service: Service) => void
 }) {
   const nextService =
     services.find((service) => new Date(service.end).getTime() >= now.getTime()) ?? services[0]
@@ -1998,12 +2189,33 @@ function IntegrationsView({
           <div>
             <h3>Google Calendar</h3>
             <p>
-              L'app prepara gia payload compatibile con creazione evento: al prossimo passo si
-              aggiunge OAuth e chiamata API server-side.
+              OAuth server-side pronto: collega l account Google e invia i servizi direttamente
+              sul calendario dell operatore.
             </p>
-            <button className="secondary-button" type="button" onClick={() => onCopyGooglePayload(nextService)}>
-              Copia payload evento
-            </button>
+            <div className="workbench-actions">
+              <button className="primary-button" type="button" onClick={onConnectGoogleCalendar}>
+                <Link2 size={16} />
+                Collega Google
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={!nextService}
+                onClick={() => nextService && onSyncGoogle(nextService)}
+              >
+                <CalendarDays size={16} />
+                Sincronizza servizio
+              </button>
+              <button
+                className="ghost-button"
+                type="button"
+                disabled={!nextService}
+                onClick={() => nextService && onCopyGooglePayload(nextService)}
+              >
+                <Copy size={16} />
+                Copia payload
+              </button>
+            </div>
           </div>
 
           <div>
@@ -2015,6 +2227,18 @@ function IntegrationsView({
             <button className="secondary-button" type="button" onClick={onExportAll}>
               <Download size={16} />
               Scarica calendario
+            </button>
+          </div>
+
+          <div>
+            <h3>Fatturazione elettronica</h3>
+            <p>
+              Endpoint backend pronto per inviare le fatture a Fatture in Cloud quando token e
+              company ID sono presenti su Vercel.
+            </p>
+            <button className="secondary-button" type="button" disabled>
+              <ReceiptText size={16} />
+              Usa pannello fatture
             </button>
           </div>
         </div>
@@ -2126,6 +2350,7 @@ function ServicesTable({
   onCreateInvoice,
   onDownloadIcs,
   onStatusChange,
+  onSyncGoogle,
 }: WorkspaceProps &
   ServiceActions & {
     compact?: boolean
@@ -2213,9 +2438,22 @@ function ServicesTable({
                         onClick={() => onCopyGooglePayload(service)}
                         title="Copia payload Google Calendar"
                       >
-                        <CalendarDays size={15} />
+                        <Copy size={15} />
                       </button>
                     ) : null}
+                    <button
+                      className="table-action"
+                      type="button"
+                      disabled={Boolean(service.sync.googleEventId)}
+                      onClick={() => onSyncGoogle(service)}
+                      title={
+                        service.sync.googleEventId
+                          ? 'Evento Google gia creato'
+                          : 'Crea evento su Google Calendar'
+                      }
+                    >
+                      <CalendarDays size={15} />
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -2228,6 +2466,10 @@ function ServicesTable({
 }
 
 function DayTimeline({ services, state }: WorkspaceProps) {
+  if (services.length === 0) {
+    return <p className="empty-copy compact-empty">Nessun servizio in agenda.</p>
+  }
+
   const hours = Array.from({ length: 17 }, (_, index) => index + 6)
   const dayStart = 6 * 60
   const totalMinutes = 17 * 60
@@ -2323,7 +2565,7 @@ function DetailItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="detail-item">
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong>{value || 'Non impostato'}</strong>
     </div>
   )
 }
@@ -2374,8 +2616,8 @@ function createEmptyQuoteDraft(state: WorkspaceState): QuoteDraft {
     serviceDate: toDateTimeInputValue(serviceDate),
     passengers: 1,
     vehicleId: state.vehicles[0]?.id ?? '',
-    serviceType: 'Transfer aeroporto',
-    gross: 120,
+    serviceType: '',
+    gross: 0,
     validUntil: toDateTimeInputValue(validUntil),
     notes: '',
   }

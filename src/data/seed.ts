@@ -24,7 +24,7 @@ export const seedWorkspace: WorkspaceState = {
       id: 'invoicing',
       name: 'Fatturazione elettronica',
       status: 'attention',
-      description: 'Connettore futuro verso provider di fatturazione elettronica.',
+      description: 'API server-side pronta per provider di fatturazione elettronica.',
     },
     {
       id: 'payments',

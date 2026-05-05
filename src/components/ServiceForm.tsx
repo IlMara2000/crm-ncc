@@ -18,7 +18,7 @@ export function ServiceForm({
 }: ServiceFormProps) {
   const [draft, setDraft] = useState<ServiceDraft>({
     customerId: customers[0]?.id ?? '',
-    title: 'Nuovo transfer',
+    title: '',
     pickup: '',
     dropoff: '',
     date: toDateInputValue(),
@@ -27,7 +27,7 @@ export function ServiceForm({
     passengers: 1,
     vehicleId: vehicles[0]?.id ?? '',
     serviceType: 'Transfer aeroporto',
-    price: 90,
+    price: 0,
     paymentMethod: 'Carta',
     flight: '',
     notes: '',
@@ -85,7 +85,7 @@ export function ServiceForm({
             <input
               value={draft.pickup}
               onChange={(event) => update('pickup', event.target.value)}
-              placeholder="Es. Aeroporto Venezia Marco Polo"
+              placeholder="Luogo di partenza"
               required
             />
           </label>
@@ -95,7 +95,7 @@ export function ServiceForm({
             <input
               value={draft.dropoff}
               onChange={(event) => update('dropoff', event.target.value)}
-              placeholder="Es. Hotel, indirizzo, stazione"
+              placeholder="Luogo di destinazione"
               required
             />
           </label>
@@ -199,7 +199,7 @@ export function ServiceForm({
               <input
                 value={draft.flight}
                 onChange={(event) => update('flight', event.target.value)}
-                placeholder="Facoltativo"
+                placeholder="Numero volo o treno"
               />
             </label>
           </div>
