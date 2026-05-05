@@ -88,6 +88,7 @@ import type {
   ServiceDraft,
   ServiceStatus,
   Vehicle,
+  VehicleDraft,
   View,
   WorkspaceState,
 } from './lib/types'
@@ -234,12 +235,13 @@ function App() {
     const [year, month, day] = selectedDate.split('-').map(Number)
     return new Date(year, month - 1, day)
   }, [selectedDate])
+  const canCreateService = workspace.customers.length > 0 && workspace.vehicles.length > 0
 
   function addService(draft: ServiceDraft) {
     setWorkspace((current) => {
       const service: Service = {
         id: createId('srv'),
-        code: `SCE-${String(1000 + current.services.length + 1).padStart(4, '0')}`,
+        code: getNextServiceCode(current.services),
         customerId: draft.customerId,
         title: draft.title,
         pickup: draft.pickup,
@@ -248,7 +250,7 @@ function App() {
         end: combineLocalDateAndTime(draft.date, draft.endTime),
         passengers: draft.passengers,
         vehicleId: draft.vehicleId,
-        driver: 'Daniele',
+        driver: current.settings.operatorName || 'Operatore',
         status: 'pending',
         serviceType: draft.serviceType,
         price: draft.price,
@@ -317,7 +319,7 @@ function App() {
       const vatRate = current.settings.defaultVatRate
       const quote: Quote = {
         id: createId('quote'),
-        number: getNextDocumentNumber(current.quotes, 'PREV-2026', 27),
+        number: getNextDocumentNumber(current.quotes, 'PREV-2026', 0),
         customerId: draft.customerId,
         title: draft.title.trim(),
         pickup: draft.pickup.trim(),
@@ -408,6 +410,27 @@ function App() {
     }))
   }
 
+  function addVehicle(draft: VehicleDraft) {
+    const vehicle: Vehicle = {
+      id: createId('veh'),
+      name: draft.name.trim(),
+      plate: draft.plate.trim().toUpperCase(),
+      capacity: Number(draft.capacity),
+      status: 'available',
+      insuranceUntil: combineLocalDateAndTime(draft.insuranceUntil, '09:00'),
+      revisionUntil: combineLocalDateAndTime(draft.revisionUntil, '09:00'),
+      nccPermitUntil: combineLocalDateAndTime(draft.nccPermitUntil, '09:00'),
+      notes: draft.notes.trim() || 'Nessuna nota inserita.',
+    }
+
+    setWorkspace((current) => ({
+      ...current,
+      vehicles: [vehicle, ...current.vehicles],
+      updatedAt: new Date().toISOString(),
+    }))
+    setToast('Mezzo aggiunto al parco NCC.')
+  }
+
   function createInvoiceFromService(service: Service) {
     if (service.invoiceStatus !== 'to-issue') {
       setToast('La fattura risulta gia gestita per questo servizio.')
@@ -419,7 +442,7 @@ function App() {
       const net = Math.round((gross / 1.22) * 100) / 100
       const invoice: Invoice = {
         id: createId('inv'),
-        number: getNextDocumentNumber(current.invoices, 'FAT-2026', 18),
+        number: getNextDocumentNumber(current.invoices, 'FAT-2026', 0),
         customerId: service.customerId,
         serviceIds: [service.id],
         issuedAt: new Date().toISOString(),
@@ -440,7 +463,7 @@ function App() {
         updatedAt: new Date().toISOString(),
       }
     })
-    setToast('Fattura demo generata: pronta per connettore SDI/provider esterno.')
+    setToast('Fattura generata: pronta per connettore SDI/provider esterno.')
   }
 
   function markInvoicePaid(invoiceId: string) {
@@ -466,7 +489,7 @@ function App() {
 
   function resetDemoData() {
     setWorkspace(resetWorkspaceState())
-    setToast('Dati demo ripristinati.')
+    setToast('Archivio svuotato e pronto per dati reali.')
   }
 
   function exportAllIcs() {
@@ -475,7 +498,7 @@ function App() {
       workspace.customers,
       workspace.vehicles,
     )
-    downloadIcs('sceva-servizi-ncc.ics', content)
+    downloadIcs('ncc-crm-servizi.ics', content)
     setToast('Calendario ICS esportato.')
   }
 
@@ -507,7 +530,7 @@ function App() {
 
   function exportBackup() {
     downloadTextFile(
-      `sceva-backup-${toDateInputValue()}.json`,
+      `ncc-crm-backup-${toDateInputValue()}.json`,
       JSON.stringify(workspace, null, 2),
       'application/json',
     )
@@ -543,7 +566,7 @@ function App() {
       }),
     ]
     downloadTextFile(
-      `sceva-servizi-${toDateInputValue()}.csv`,
+      `ncc-crm-servizi-${toDateInputValue()}.csv`,
       rows.map((row) => row.map(csvCell).join(',')).join('\n'),
       'text/csv;charset=utf-8',
     )
@@ -730,7 +753,11 @@ function App() {
     ) : activeView === 'customers' ? (
       <CustomersView state={workspace} services={sortedServices} onAddCustomer={addCustomer} />
     ) : activeView === 'vehicles' ? (
-      <VehiclesView state={workspace} onVehicleStatusChange={updateVehicleStatus} />
+      <VehiclesView
+        state={workspace}
+        onAddVehicle={addVehicle}
+        onVehicleStatusChange={updateVehicleStatus}
+      />
     ) : activeView === 'invoices' ? (
       <InvoicesView state={workspace} onMarkPaid={markInvoicePaid} onPrintInvoice={printInvoice} />
     ) : activeView === 'data' ? (
@@ -761,10 +788,10 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">S</div>
+          <div className="brand-mark">N</div>
           <div>
-            <strong>SCEVA</strong>
-            <span>CRM NCC</span>
+            <strong>NCC CRM</strong>
+            <span>Gestionale operativo</span>
           </div>
         </div>
 
@@ -788,8 +815,8 @@ function App() {
         <div className="sidebar-footer">
           <Settings2 size={17} />
           <div>
-            <strong>Prossimo step</strong>
-            <span>Backend, OAuth, fatturazione</span>
+            <strong>REALINDI DEN SYSTEMS</strong>
+            <span>(C) 2026</span>
           </div>
         </div>
       </aside>
@@ -802,9 +829,19 @@ function App() {
           </div>
           <div className="topbar-actions">
             <button className="ghost-button" type="button" onClick={resetDemoData}>
-              Ripristina demo
+              Svuota dati
             </button>
-            <button className="primary-button" type="button" onClick={() => setServiceFormOpen(true)}>
+            <button
+              className="primary-button"
+              type="button"
+              disabled={!canCreateService}
+              onClick={() => setServiceFormOpen(true)}
+              title={
+                canCreateService
+                  ? 'Crea un nuovo servizio'
+                  : 'Aggiungi almeno un cliente e un mezzo prima di creare un servizio'
+              }
+            >
               <Plus size={17} />
               Nuovo servizio
             </button>
@@ -866,9 +903,14 @@ function DashboardView({
       )
     })
     .reduce((sum, service) => sum + service.price, 0)
-  const confirmedRate = Math.round(
-    (services.filter((service) => service.status === 'confirmed').length / services.length) * 100,
-  )
+  const confirmedRate =
+    services.length > 0
+      ? Math.round(
+          (services.filter((service) => service.status === 'confirmed').length /
+            services.length) *
+            100,
+        )
+      : 0
 
   return (
     <section className="view-stack">
@@ -1069,6 +1111,7 @@ function QuotesView({
   const openTotal = state.quotes
     .filter((quote) => quote.status === 'draft' || quote.status === 'sent')
     .reduce((sum, quote) => sum + quote.gross, 0)
+  const canCreateQuote = state.customers.length > 0 && state.vehicles.length > 0
 
   function submitQuote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -1098,6 +1141,9 @@ function QuotesView({
       <div className="quote-layout">
         <section className="panel">
           <PanelHeader icon={Plus} title="Nuovo preventivo" />
+          {!canCreateQuote ? (
+            <p className="empty-copy">Inserisci almeno un cliente e un mezzo prima di creare preventivi.</p>
+          ) : null}
           <form className="compact-form" onSubmit={submitQuote}>
             <label>
               Cliente
@@ -1220,7 +1266,7 @@ function QuotesView({
             </label>
 
             <div className="modal-actions">
-              <button className="primary-button" type="submit">
+              <button className="primary-button" type="submit" disabled={!canCreateQuote}>
                 <Plus size={16} />
                 Crea preventivo
               </button>
@@ -1453,7 +1499,7 @@ function CustomersView({
               </div>
 
               <div className="stats-grid compact-stats">
-                <StatCard icon={Route} label="Servizi" value={`${customerServices.length}`} detail="storico demo" />
+                <StatCard icon={Route} label="Servizi" value={`${customerServices.length}`} detail="storico cliente" />
                 <StatCard icon={CircleDollarSign} label="Valore" value={formatMoney(gross)} detail="lordo corse" />
                 <StatCard icon={ReceiptText} label="Fatture" value={`${customerInvoices.length}`} detail="collegate" />
               </div>
@@ -1479,12 +1525,15 @@ function CustomersView({
 }
 
 function VehiclesView({
+  onAddVehicle,
   state,
   onVehicleStatusChange,
 }: {
+  onAddVehicle: (draft: VehicleDraft) => void
   state: WorkspaceState
   onVehicleStatusChange: (vehicleId: string, status: Vehicle['status']) => void
 }) {
+  const [draft, setDraft] = useState<VehicleDraft>(() => createEmptyVehicleDraft())
   const expensesTotal = state.expenses.reduce((sum, expense) => sum + expense.amount, 0)
   const availableVehicles = state.vehicles.filter((vehicle) => vehicle.status === 'available')
   const nextDeadline = state.vehicles
@@ -1494,6 +1543,12 @@ function VehiclesView({
       { vehicle, label: 'Autorizzazione NCC', date: vehicle.nccPermitUntil },
     ])
     .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime())[0]
+
+  function submitVehicle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    onAddVehicle(draft)
+    setDraft(createEmptyVehicleDraft())
+  }
 
   return (
     <section className="view-stack">
@@ -1506,7 +1561,7 @@ function VehiclesView({
 
       <div className="stats-grid compact-stats">
         <StatCard icon={Car} label="Disponibili" value={`${availableVehicles.length}/${state.vehicles.length}`} detail="mezzi pronti" />
-        <StatCard icon={Fuel} label="Costi registrati" value={formatMoney(expensesTotal)} detail="spese demo" />
+        <StatCard icon={Fuel} label="Costi registrati" value={formatMoney(expensesTotal)} detail="spese operative" />
         <StatCard
           icon={ShieldCheck}
           label="Prossima scadenza"
@@ -1515,7 +1570,92 @@ function VehiclesView({
         />
       </div>
 
+      <section className="panel">
+        <PanelHeader icon={Plus} title="Nuovo mezzo" />
+        <form className="compact-form" onSubmit={submitVehicle}>
+          <div className="form-row">
+            <label>
+              Nome mezzo
+              <input
+                value={draft.name}
+                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                placeholder="Mercedes Classe E"
+                required
+              />
+            </label>
+            <label>
+              Targa
+              <input
+                value={draft.plate}
+                onChange={(event) => setDraft({ ...draft, plate: event.target.value })}
+                placeholder="AA 000 AA"
+                required
+              />
+            </label>
+            <label>
+              Posti
+              <input
+                min={1}
+                type="number"
+                value={draft.capacity}
+                onChange={(event) => setDraft({ ...draft, capacity: Number(event.target.value) })}
+                required
+              />
+            </label>
+          </div>
+          <div className="form-row">
+            <label>
+              Assicurazione
+              <input
+                type="date"
+                value={draft.insuranceUntil}
+                onChange={(event) => setDraft({ ...draft, insuranceUntil: event.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Revisione
+              <input
+                type="date"
+                value={draft.revisionUntil}
+                onChange={(event) => setDraft({ ...draft, revisionUntil: event.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Autorizzazione NCC
+              <input
+                type="date"
+                value={draft.nccPermitUntil}
+                onChange={(event) => setDraft({ ...draft, nccPermitUntil: event.target.value })}
+                required
+              />
+            </label>
+          </div>
+          <label>
+            Note mezzo
+            <textarea
+              rows={3}
+              value={draft.notes}
+              onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
+            />
+          </label>
+          <div className="modal-actions">
+            <button className="primary-button" type="submit">
+              <Plus size={16} />
+              Aggiungi mezzo
+            </button>
+          </div>
+        </form>
+      </section>
+
       <div className="vehicle-grid">
+        {state.vehicles.length === 0 ? (
+          <section className="panel empty-state">
+            <PanelHeader icon={Car} title="Parco mezzi" />
+            <p>Non ci sono mezzi inseriti. Aggiungi il primo mezzo per creare servizi.</p>
+          </section>
+        ) : null}
         {state.vehicles.map((vehicle) => {
           const vehicleExpenses = state.expenses.filter((expense) => expense.vehicleId === vehicle.id)
           const vehicleExpenseTotal = vehicleExpenses.reduce((sum, expense) => sum + expense.amount, 0)
@@ -1710,13 +1850,13 @@ function DataView({
         </section>
 
         <section className="panel danger-panel">
-          <PanelHeader icon={Wrench} title="Ambiente demo" />
+          <PanelHeader icon={Wrench} title="Archivio locale" />
           <p>
-            I dati sono salvati nel browser. Il ripristino serve solo per tornare al set iniziale
-            mentre si prova l'app prima del collegamento online.
+            I dati sono salvati nel browser e sincronizzabili con Supabase quando il cloud e
+            configurato. Lo svuotamento torna a un archivio neutro senza dati precompilati.
           </p>
           <button className="ghost-button" type="button" onClick={onResetDemo}>
-            Ripristina dati demo
+            Svuota archivio
           </button>
         </section>
       </div>
@@ -1752,7 +1892,7 @@ function InvoicesView({
       <div className="stats-grid">
         <StatCard icon={ReceiptText} label="Da incassare" value={formatMoney(openTotal)} detail="fatture aperte" />
         <StatCard icon={CheckCircle2} label="Incassato" value={formatMoney(paidTotal)} detail="fatture pagate" />
-        <StatCard icon={FileText} label="Documenti" value={`${state.invoices.length}`} detail="demo locale" />
+        <StatCard icon={FileText} label="Documenti" value={`${state.invoices.length}`} detail="archivio locale" />
       </div>
 
       <section className="panel">
@@ -1870,7 +2010,7 @@ function IntegrationsView({
             <h3>Apple Calendar / ICS</h3>
             <p>
               Apple Calendar importa file e feed iCalendar. Qui puoi gia scaricare un calendario
-              completo dei servizi SCEVA.
+              completo dei servizi NCC CRM.
             </p>
             <button className="secondary-button" type="button" onClick={onExportAll}>
               <Download size={16} />
@@ -1952,11 +2092,15 @@ function SideOperationsPanel({ state }: { state: WorkspaceState }) {
 
       <section className="panel">
         <PanelHeader icon={Car} title="Mezzi" />
-        <div className="vehicle-row">
-          <strong>{nextVehicleDeadline.name}</strong>
-          <span>{nextVehicleDeadline.plate}</span>
-          <small>Assicurazione {formatShortDate(nextVehicleDeadline.insuranceUntil)}</small>
-        </div>
+        {nextVehicleDeadline ? (
+          <div className="vehicle-row">
+            <strong>{nextVehicleDeadline.name}</strong>
+            <span>{nextVehicleDeadline.plate}</span>
+            <small>Assicurazione {formatShortDate(nextVehicleDeadline.insuranceUntil)}</small>
+          </div>
+        ) : (
+          <p className="empty-copy">Nessun mezzo inserito.</p>
+        )}
       </section>
 
       <section className="panel">
@@ -2058,7 +2202,7 @@ function ServicesTable({
                       type="button"
                       disabled={service.invoiceStatus !== 'to-issue'}
                       onClick={() => onCreateInvoice(service)}
-                      title="Genera fattura demo"
+                      title="Genera fattura"
                     >
                       <ReceiptText size={15} />
                     </button>
@@ -2237,6 +2381,24 @@ function createEmptyQuoteDraft(state: WorkspaceState): QuoteDraft {
   }
 }
 
+function createEmptyVehicleDraft(): VehicleDraft {
+  return {
+    name: '',
+    plate: '',
+    capacity: 4,
+    insuranceUntil: futureDateInput(30),
+    revisionUntil: futureDateInput(180),
+    nccPermitUntil: futureDateInput(365),
+    notes: '',
+  }
+}
+
+function futureDateInput(days: number) {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  return toDateInputValue(date)
+}
+
 function toDateTimeInputValue(date: Date) {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
   return localDate.toISOString().slice(0, 16)
@@ -2254,8 +2416,8 @@ function getNextServiceCode(services: Service[]) {
   const next = services.reduce((max, service) => {
     const parsed = Number(service.code.split('-').at(-1))
     return Number.isFinite(parsed) ? Math.max(max, parsed) : max
-  }, 1000) + 1
-  return `SCE-${String(next).padStart(4, '0')}`
+  }, 0) + 1
+  return `NCC-${String(next).padStart(4, '0')}`
 }
 
 function roundMoney(value: number) {

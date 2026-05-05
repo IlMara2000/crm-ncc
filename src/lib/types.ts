@@ -200,3 +200,13 @@ export interface QuoteDraft {
   validUntil: string
   notes: string
 }
+
+export interface VehicleDraft {
+  name: string
+  plate: string
+  capacity: number
+  insuranceUntil: string
+  revisionUntil: string
+  nccPermitUntil: string
+  notes: string
+}

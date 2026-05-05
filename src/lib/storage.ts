@@ -1,7 +1,7 @@
 import { seedWorkspace } from '../data/seed'
 import type { WorkspaceState } from './types'
 
-const STORAGE_KEY = 'sceva-ncc-crm-state-v1'
+const STORAGE_KEY = 'ncc-crm-state-v1'
 
 function createSeedWorkspaceState(): WorkspaceState {
   return {

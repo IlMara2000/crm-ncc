@@ -49,7 +49,7 @@ export function getGoogleCalendarInsertPayload(
     },
     extendedProperties: {
       private: {
-        scevaServiceId: service.id,
+        nccCrmServiceId: service.id,
         customerId: service.customerId,
         vehicleId: service.vehicleId,
       },
@@ -70,7 +70,7 @@ export function buildIcsForServices(
 
     return [
       'BEGIN:VEVENT',
-      `UID:${service.id}@sceva.local`,
+      `UID:${service.id}@ncc-crm.local`,
       `DTSTAMP:${stamp}`,
       `DTSTART:${toIcsDate(service.start)}`,
       `DTEND:${toIcsDate(service.end)}`,
@@ -85,7 +85,7 @@ export function buildIcsForServices(
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//SCEVA//NCC CRM//IT',
+    'PRODID:-//REALINDI DEN SYSTEMS//NCC CRM//IT',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     ...events,

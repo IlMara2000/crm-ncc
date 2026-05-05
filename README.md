@@ -1,20 +1,22 @@
-# SCEVA CRM NCC
+# NCC CRM
 
-App web React + Vite pensata per un singolo operatore NCC che vuole gestire lavoro quotidiano, clienti, corse, fatture e calendario senza complessita inutili.
+App web React + Vite per un operatore NCC: servizi, agenda, clienti, mezzi, preventivi, fatture e integrazioni calendario.
+
+REALINDI DEN SYSTEMS (C) 2026
 
 ## Cosa c'e gia
 
 - Cruscotto operativo con prossimo servizio, agenda del giorno, KPI e stato fatture.
 - Agenda giornaliera con blocchi servizio.
-- Gestione servizi/prenotazioni con cambio stato, esportazione evento `.ics` e generazione fattura demo.
+- Gestione servizi/prenotazioni con cambio stato, esportazione evento `.ics` e generazione fattura.
 - Preventivi con stato bozza/inviato/accettato/scaduto, stampa documento e conversione diretta in servizio.
 - Rubrica clienti con dati fiscali, preferenze e storico corse.
 - Inserimento rapido nuovi clienti dalla rubrica.
-- Area mezzi con stato veicolo, scadenze assicurazione/revisione/autorizzazione NCC e spese operative.
+- Area mezzi con inserimento veicolo, stato, scadenze assicurazione/revisione/autorizzazione NCC e spese operative.
 - Area fatture con stato `Da emettere`, `Inviata`, `Pagata`, stampa documento e registrazione incasso.
-- Area dati con backup JSON, import backup e export CSV servizi.
+- Area dati con backup JSON, import backup, export CSV servizi e accesso cloud Supabase.
 - Area integrazioni pronta per Google Calendar, Apple Calendar/ICS, fatturazione elettronica e pagamenti.
-- Persistenza locale via `localStorage`, utile per prototipo e demo senza backend.
+- Archivio iniziale vuoto, senza dati precompilati.
 
 ## Avvio
 
@@ -29,13 +31,12 @@ npm run dev
 npm run build
 ```
 
-## Architettura integrazioni
+## Supabase
 
-Il frontend prepara gia i dati necessari:
+Il frontend usa `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`. La tabella cloud e definita in:
 
-- Google Calendar: `src/lib/calendar.ts` genera il payload evento compatibile con `events.insert`.
-- Apple Calendar: la stessa libreria genera file iCalendar `.ics`, importabile da Apple Calendar e riutilizzabile per un feed `webcal`.
-- Fatturazione: servizi e fatture hanno id, cliente, importi, IVA, stato e campo `externalId` per collegare un provider esterno.
-- Dati: il backup JSON esporta l'intero stato locale e puo diventare la base per una futura migrazione verso database.
+```text
+supabase/migrations/0001_workspace_state.sql
+```
 
-Il passo successivo naturale e aggiungere backend/API per autenticazione, database, OAuth Google e provider di fatturazione.
+Il salvataggio cloud usa Supabase Auth e RLS: ogni utente legge e scrive solo il proprio workspace.
