@@ -12,10 +12,11 @@ REALINDI DEN SYSTEMS (C) 2026
 - Preventivi con stato bozza/inviato/accettato/scaduto, stampa documento e conversione diretta in servizio.
 - Rubrica clienti con dati fiscali, preferenze e storico corse.
 - Inserimento rapido nuovi clienti dalla rubrica.
-- Area mezzi con inserimento veicolo, stato, scadenze assicurazione/revisione/autorizzazione NCC e spese operative.
-- Area fatture con stato `Da emettere`, `Inviata`, `Pagata`, stampa documento e registrazione incasso.
+- Area mezzi con inserimento veicolo, stato, scadenze assicurazione/revisione/autorizzazione NCC e registrazione spese operative.
+- Area fatture con stato `Da emettere`, `Inviata`, `Pagata`, stampa documento, richiesta pagamento copiabile e registrazione incasso.
 - Area dati con backup JSON, import backup, export CSV servizi e accesso cloud Supabase.
-- Area integrazioni pronta per Google Calendar, Apple Calendar/ICS, fatturazione elettronica e pagamenti.
+- Area dati operatore modificabile per intestazione documenti e IVA di default.
+- Area integrazioni operativa per Google Calendar, Apple Calendar/ICS, fatturazione elettronica e pagamenti.
 - Archivio iniziale vuoto, senza dati precompilati.
 
 ## Avvio

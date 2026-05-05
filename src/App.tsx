@@ -85,8 +85,11 @@ import {
 import type {
   Customer,
   CustomerDraft,
+  Expense,
   ExpenseCategory,
+  ExpenseDraft,
   Invoice,
+  OperatorSettings,
   Quote,
   QuoteDraft,
   QuoteStatus,
@@ -467,6 +470,25 @@ function App() {
     setToast('Mezzo aggiunto al parco NCC.')
   }
 
+  function addExpense(draft: ExpenseDraft) {
+    const expense: Expense = {
+      id: createId('exp'),
+      date: combineLocalDateAndTime(draft.date, '12:00'),
+      category: draft.category,
+      description: draft.description.trim(),
+      amount: roundMoney(Number(draft.amount)),
+      vehicleId: draft.vehicleId || undefined,
+      serviceId: draft.serviceId || undefined,
+    }
+
+    setWorkspace((current) => ({
+      ...current,
+      expenses: [expense, ...current.expenses],
+      updatedAt: new Date().toISOString(),
+    }))
+    setToast('Spesa registrata e collegata al mezzo.')
+  }
+
   function createInvoiceFromService(service: Service) {
     if (service.invoiceStatus !== 'to-issue') {
       setToast('La fattura risulta gia gestita per questo servizio.')
@@ -500,7 +522,7 @@ function App() {
         updatedAt: new Date().toISOString(),
       }
     })
-    setToast('Fattura generata: pronta per connettore SDI/provider esterno.')
+    setToast('Fattura generata. Puoi stamparla, copiarne la richiesta pagamento o inviarla al provider.')
   }
 
   function markInvoicePaid(invoiceId: string) {
@@ -527,6 +549,25 @@ function App() {
   function clearWorkspaceData() {
     setWorkspace(resetWorkspaceState())
     setToast('Archivio svuotato e pronto per dati reali.')
+  }
+
+  function updateSettings(settings: OperatorSettings) {
+    const updatedAt = new Date().toISOString()
+    setWorkspace((current) => ({
+      ...current,
+      settings: {
+        ...settings,
+        businessName: settings.businessName.trim() || 'NCC CRM',
+        operatorName: settings.operatorName.trim(),
+        phone: settings.phone.trim(),
+        email: settings.email.trim(),
+        vatNumber: settings.vatNumber.trim(),
+        address: settings.address.trim(),
+        defaultVatRate: Number(settings.defaultVatRate),
+      },
+      updatedAt,
+    }))
+    setToast('Dati operatore aggiornati.')
   }
 
   function exportAllIcs() {
@@ -648,6 +689,50 @@ function App() {
         setToast(`Fattura inviata al provider ${result.provider}.`)
       })
       .catch((error: Error) => setToast(error.message))
+  }
+
+  function copyPaymentRequest(invoice: Invoice) {
+    if (!navigator.clipboard) {
+      setToast('Clipboard non disponibile in questo browser.')
+      return
+    }
+
+    const customer = getCustomer(workspace, invoice.customerId)
+    const invoiceServices = workspace.services.filter((service) =>
+      invoice.serviceIds.includes(service.id),
+    )
+    const routes = invoiceServices
+      .map((service) => `${formatShortDate(service.start)} ${service.pickup} -> ${service.dropoff}`)
+      .join('\n')
+    const message = [
+      `${workspace.settings.businessName || 'NCC CRM'}`,
+      `Richiesta pagamento fattura ${invoice.number}`,
+      customer ? `Cliente: ${customer.name}` : '',
+      `Totale: ${formatMoney(invoice.gross)}`,
+      `Scadenza: ${formatShortDate(invoice.dueAt)}`,
+      invoice.paymentMethod ? `Metodo: ${invoice.paymentMethod}` : '',
+      routes ? `Servizi:\n${routes}` : '',
+      'Grazie.',
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    void navigator.clipboard
+      .writeText(message)
+      .then(() => {
+        const syncedAt = new Date().toISOString()
+        setWorkspace((current) => ({
+          ...current,
+          integrations: current.integrations.map((integration) =>
+            integration.id === 'payments'
+              ? { ...integration, status: 'connected', lastSync: syncedAt }
+              : integration,
+          ),
+          updatedAt: syncedAt,
+        }))
+        setToast('Richiesta pagamento copiata.')
+      })
+      .catch(() => setToast('Non riesco a copiare la richiesta pagamento.'))
   }
 
   function exportBackup() {
@@ -880,18 +965,22 @@ function App() {
     ) : activeView === 'vehicles' ? (
       <VehiclesView
         state={workspace}
+        services={sortedServices}
+        onAddExpense={addExpense}
         onAddVehicle={addVehicle}
         onVehicleStatusChange={updateVehicleStatus}
       />
     ) : activeView === 'invoices' ? (
       <InvoicesView
         state={workspace}
+        onCopyPaymentRequest={copyPaymentRequest}
         onMarkPaid={markInvoicePaid}
         onPrintInvoice={printInvoice}
         onSendInvoice={sendInvoiceToProvider}
       />
     ) : activeView === 'data' ? (
       <DataView
+        key={settingsKey(workspace.settings)}
         cloudEmail={cloudEmail}
         cloudStatus={cloudStatus}
         cloudUserEmail={cloudSession?.user.email ?? ''}
@@ -901,6 +990,7 @@ function App() {
         onExportServicesCsv={exportServicesCsv}
         onImportBackup={importBackup}
         onRequestCloudLogin={requestCloudLogin}
+        onUpdateSettings={updateSettings}
         onClearWorkspace={clearWorkspaceData}
         onSignOutCloud={disconnectCloud}
       />
@@ -912,6 +1002,8 @@ function App() {
         onConnectGoogleCalendar={connectGoogleCalendar}
         onCopyGooglePayload={copyGooglePayload}
         onExportAll={exportAllIcs}
+        onOpenData={() => setActiveView('data')}
+        onOpenInvoices={() => setActiveView('invoices')}
         onSyncGoogle={syncServiceToGoogle}
       />
     )
@@ -1448,6 +1540,9 @@ function QuotesView({
         <section className="panel quote-list-panel">
           <PanelHeader icon={FileText} title="Archivio preventivi" />
           <div className="quote-list">
+            {state.quotes.length === 0 ? (
+              <p className="empty-copy compact-empty">Nessun preventivo salvato. Crea il primo preventivo dal modulo.</p>
+            ) : null}
             {state.quotes.map((quote) => {
               const customer = getCustomer(state, quote.customerId)
               const vehicle = state.vehicles.find((item) => item.id === quote.vehicleId)
@@ -1696,17 +1791,25 @@ function CustomersView({
 }
 
 function VehiclesView({
+  onAddExpense,
   onAddVehicle,
+  services,
   state,
   onVehicleStatusChange,
 }: {
+  onAddExpense: (draft: ExpenseDraft) => void
   onAddVehicle: (draft: VehicleDraft) => void
+  services: Service[]
   state: WorkspaceState
   onVehicleStatusChange: (vehicleId: string, status: Vehicle['status']) => void
 }) {
   const [draft, setDraft] = useState<VehicleDraft>(() => createEmptyVehicleDraft())
+  const [expenseDraft, setExpenseDraft] = useState<ExpenseDraft>(() =>
+    createEmptyExpenseDraft(state),
+  )
   const expensesTotal = state.expenses.reduce((sum, expense) => sum + expense.amount, 0)
   const availableVehicles = state.vehicles.filter((vehicle) => vehicle.status === 'available')
+  const canRegisterExpense = state.vehicles.length > 0
   const nextDeadline = state.vehicles
     .flatMap((vehicle) => [
       { vehicle, label: 'Assicurazione', date: vehicle.insuranceUntil },
@@ -1719,6 +1822,24 @@ function VehiclesView({
     event.preventDefault()
     onAddVehicle(draft)
     setDraft(createEmptyVehicleDraft())
+  }
+
+  function submitExpense(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!canRegisterExpense || Number(expenseDraft.amount) <= 0) return
+    const vehicleId = state.vehicles.some((vehicle) => vehicle.id === expenseDraft.vehicleId)
+      ? expenseDraft.vehicleId
+      : state.vehicles[0]?.id ?? ''
+    const serviceId = services.some((service) => service.id === expenseDraft.serviceId)
+      ? expenseDraft.serviceId
+      : ''
+    onAddExpense({
+      ...expenseDraft,
+      amount: Number(expenseDraft.amount),
+      vehicleId,
+      serviceId,
+    })
+    setExpenseDraft(createEmptyExpenseDraft(state))
   }
 
   return (
@@ -1820,6 +1941,111 @@ function VehiclesView({
         </form>
       </section>
 
+      <section className="panel">
+        <PanelHeader icon={Fuel} title="Nuova spesa" />
+        {!canRegisterExpense ? (
+          <p className="empty-copy compact-empty">Inserisci almeno un mezzo prima di registrare spese.</p>
+        ) : null}
+        <form className="compact-form" onSubmit={submitExpense}>
+          <div className="form-row">
+            <label>
+              Mezzo
+              <select
+                value={expenseDraft.vehicleId}
+                onChange={(event) =>
+                  setExpenseDraft({ ...expenseDraft, vehicleId: event.target.value })
+                }
+                required
+              >
+                <option value="" disabled>
+                  Seleziona mezzo
+                </option>
+                {state.vehicles.map((vehicle) => (
+                  <option key={vehicle.id} value={vehicle.id}>
+                    {vehicle.name} - {vehicle.plate}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Categoria
+              <select
+                value={expenseDraft.category}
+                onChange={(event) =>
+                  setExpenseDraft({
+                    ...expenseDraft,
+                    category: event.target.value as ExpenseCategory,
+                  })
+                }
+              >
+                <option value="fuel">Carburante</option>
+                <option value="tolls">Pedaggi</option>
+                <option value="parking">Parcheggio</option>
+                <option value="maintenance">Manutenzione</option>
+                <option value="wash">Lavaggio</option>
+                <option value="other">Altro</option>
+              </select>
+            </label>
+            <label>
+              Data
+              <input
+                type="date"
+                value={expenseDraft.date}
+                onChange={(event) => setExpenseDraft({ ...expenseDraft, date: event.target.value })}
+                required
+              />
+            </label>
+          </div>
+          <div className="form-row">
+            <label>
+              Importo
+              <input
+                min={0.01}
+                step="0.01"
+                type="number"
+                value={expenseDraft.amount}
+                onChange={(event) =>
+                  setExpenseDraft({ ...expenseDraft, amount: Number(event.target.value) })
+                }
+                required
+              />
+            </label>
+            <label>
+              Servizio collegato
+              <select
+                value={expenseDraft.serviceId}
+                onChange={(event) =>
+                  setExpenseDraft({ ...expenseDraft, serviceId: event.target.value })
+                }
+              >
+                <option value="">Nessun servizio</option>
+                {services.map((service) => (
+                  <option key={service.id} value={service.id}>
+                    {service.code} - {service.title || formatShortDate(service.start)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label>
+            Descrizione
+            <input
+              value={expenseDraft.description}
+              onChange={(event) =>
+                setExpenseDraft({ ...expenseDraft, description: event.target.value })
+              }
+              required
+            />
+          </label>
+          <div className="modal-actions">
+            <button className="primary-button" type="submit" disabled={!canRegisterExpense}>
+              <Plus size={16} />
+              Registra spesa
+            </button>
+          </div>
+        </form>
+      </section>
+
       <div className="vehicle-grid">
         {state.vehicles.length === 0 ? (
           <section className="panel empty-state">
@@ -1906,6 +2132,7 @@ function DataView({
   onExportServicesCsv,
   onImportBackup,
   onRequestCloudLogin,
+  onUpdateSettings,
   onClearWorkspace,
   onSignOutCloud,
 }: {
@@ -1918,11 +2145,21 @@ function DataView({
   onExportServicesCsv: () => void
   onImportBackup: (file: File) => void
   onRequestCloudLogin: (email: string) => void
+  onUpdateSettings: (settings: OperatorSettings) => void
   onClearWorkspace: () => void
   onSignOutCloud: () => void
 }) {
+  const [settingsDraft, setSettingsDraft] = useState<OperatorSettings>(state.settings)
   const storedSize = formatBytes(new Blob([JSON.stringify(state)]).size)
   const isCloudConnected = Boolean(cloudUserEmail)
+
+  function submitSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    onUpdateSettings({
+      ...settingsDraft,
+      defaultVatRate: Number(settingsDraft.defaultVatRate),
+    })
+  }
 
   return (
     <section className="view-stack">
@@ -2010,14 +2247,91 @@ function DataView({
 
         <section className="panel">
           <PanelHeader icon={Settings2} title="Intestazione operatore" />
-          <div className="detail-grid">
-            <DetailItem label="Attivita" value={state.settings.businessName} />
-            <DetailItem label="Operatore" value={state.settings.operatorName} />
-            <DetailItem label="Telefono" value={state.settings.phone} />
-            <DetailItem label="Email" value={state.settings.email} />
-            <DetailItem label="Partita IVA" value={state.settings.vatNumber} />
-            <DetailItem label="IVA default" value={`${state.settings.defaultVatRate}%`} />
-          </div>
+          <form className="compact-form" onSubmit={submitSettings}>
+            <div className="form-row">
+              <label>
+                Nome attivita
+                <input
+                  value={settingsDraft.businessName}
+                  onChange={(event) =>
+                    setSettingsDraft({ ...settingsDraft, businessName: event.target.value })
+                  }
+                  required
+                />
+              </label>
+              <label>
+                Operatore
+                <input
+                  value={settingsDraft.operatorName}
+                  onChange={(event) =>
+                    setSettingsDraft({ ...settingsDraft, operatorName: event.target.value })
+                  }
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <label>
+                Telefono
+                <input
+                  value={settingsDraft.phone}
+                  onChange={(event) =>
+                    setSettingsDraft({ ...settingsDraft, phone: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Email
+                <input
+                  type="email"
+                  value={settingsDraft.email}
+                  onChange={(event) =>
+                    setSettingsDraft({ ...settingsDraft, email: event.target.value })
+                  }
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <label>
+                Partita IVA
+                <input
+                  value={settingsDraft.vatNumber}
+                  onChange={(event) =>
+                    setSettingsDraft({ ...settingsDraft, vatNumber: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                IVA default
+                <input
+                  min={0}
+                  step="0.1"
+                  type="number"
+                  value={settingsDraft.defaultVatRate}
+                  onChange={(event) =>
+                    setSettingsDraft({
+                      ...settingsDraft,
+                      defaultVatRate: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <label>
+              Indirizzo
+              <input
+                value={settingsDraft.address}
+                onChange={(event) =>
+                  setSettingsDraft({ ...settingsDraft, address: event.target.value })
+                }
+              />
+            </label>
+            <div className="modal-actions">
+              <button className="primary-button" type="submit">
+                <Settings2 size={16} />
+                Salva impostazioni
+              </button>
+            </div>
+          </form>
         </section>
 
         <section className="panel danger-panel">
@@ -2037,11 +2351,13 @@ function DataView({
 
 function InvoicesView({
   state,
+  onCopyPaymentRequest,
   onMarkPaid,
   onPrintInvoice,
   onSendInvoice,
 }: {
   state: WorkspaceState
+  onCopyPaymentRequest: (invoice: Invoice) => void
   onMarkPaid: (invoiceId: string) => void
   onPrintInvoice: (invoice: Invoice) => void
   onSendInvoice: (invoice: Invoice) => void
@@ -2070,6 +2386,9 @@ function InvoicesView({
 
       <section className="panel">
         <div className="invoice-list">
+          {state.invoices.length === 0 ? (
+            <p className="empty-copy compact-empty">Nessuna fattura presente. Generala da un servizio confermato.</p>
+          ) : null}
           {state.invoices.map((invoice) => {
             const customer = getCustomer(state, invoice.customerId)
             return (
@@ -2114,6 +2433,15 @@ function InvoicesView({
                     className="table-action"
                     type="button"
                     disabled={invoice.status === 'paid'}
+                    onClick={() => onCopyPaymentRequest(invoice)}
+                    title="Copia richiesta pagamento"
+                  >
+                    <CircleDollarSign size={16} />
+                  </button>
+                  <button
+                    className="table-action"
+                    type="button"
+                    disabled={invoice.status === 'paid'}
                     onClick={() => onMarkPaid(invoice.id)}
                     title="Segna pagata"
                   >
@@ -2136,12 +2464,16 @@ function IntegrationsView({
   onConnectGoogleCalendar,
   onCopyGooglePayload,
   onExportAll,
+  onOpenData,
+  onOpenInvoices,
   onSyncGoogle,
 }: WorkspaceProps & {
   now: Date
   onConnectGoogleCalendar: () => void
   onCopyGooglePayload: (service: Service) => void
   onExportAll: () => void
+  onOpenData: () => void
+  onOpenInvoices: () => void
   onSyncGoogle: (service: Service) => void
 }) {
   const nextService =
@@ -2152,7 +2484,7 @@ function IntegrationsView({
       <div className="section-toolbar">
         <div>
           <h2>Integrazioni</h2>
-          <p>Connettori preparati per calendario, pagamenti e fatturazione esterna.</p>
+          <p>Collegamenti operativi per calendario, pagamenti e fatturazione esterna.</p>
         </div>
       </div>
 
@@ -2236,10 +2568,28 @@ function IntegrationsView({
               Endpoint backend pronto per inviare le fatture a Fatture in Cloud quando token e
               company ID sono presenti su Vercel.
             </p>
-            <button className="secondary-button" type="button" disabled>
+            <button className="secondary-button" type="button" onClick={onOpenInvoices}>
               <ReceiptText size={16} />
-              Usa pannello fatture
+              Apri fatture
             </button>
+          </div>
+
+          <div>
+            <h3>Pagamenti</h3>
+            <p>
+              Ogni fattura aperta genera subito una richiesta pagamento copiabile per WhatsApp,
+              email o POS, con stato incasso aggiornabile.
+            </p>
+            <div className="workbench-actions">
+              <button className="secondary-button" type="button" onClick={onOpenInvoices}>
+                <CircleDollarSign size={16} />
+                Richieste pagamento
+              </button>
+              <button className="ghost-button" type="button" onClick={onOpenData}>
+                <Settings2 size={16} />
+                Dati intestazione
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -2635,6 +2985,17 @@ function createEmptyVehicleDraft(): VehicleDraft {
   }
 }
 
+function createEmptyExpenseDraft(state: WorkspaceState): ExpenseDraft {
+  return {
+    date: toDateInputValue(),
+    category: 'fuel',
+    description: '',
+    amount: 0,
+    vehicleId: state.vehicles[0]?.id ?? '',
+    serviceId: '',
+  }
+}
+
 function futureDateInput(days: number) {
   const date = new Date()
   date.setDate(date.getDate() + days)
@@ -2737,6 +3098,18 @@ function cloudStatusLabel(status: CloudStatus) {
     syncing: 'Sincronizzazione',
   }
   return labels[status]
+}
+
+function settingsKey(settings: OperatorSettings) {
+  return [
+    settings.businessName,
+    settings.operatorName,
+    settings.phone,
+    settings.email,
+    settings.vatNumber,
+    settings.address,
+    settings.defaultVatRate,
+  ].join('|')
 }
 
 export default App

@@ -127,6 +127,15 @@ export interface Expense {
   serviceId?: string
 }
 
+export interface ExpenseDraft {
+  date: string
+  category: ExpenseCategory
+  description: string
+  amount: number
+  vehicleId: string
+  serviceId: string
+}
+
 export interface OperatorSettings {
   businessName: string
   operatorName: string
