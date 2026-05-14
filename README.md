@@ -2,7 +2,7 @@
 
 App web React + Vite per un operatore NCC: servizi, agenda, clienti, mezzi, preventivi, fatture e integrazioni calendario.
 
-REALINDI DEN SYSTEMS (C) 2026
+REALINDI DEN SYSTEMS &copy; 2026
 
 ## Cosa c'e gia
 

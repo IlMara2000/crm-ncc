@@ -1058,10 +1058,9 @@ function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <Settings2 size={17} />
           <div>
             <strong>REALINDI DEN SYSTEMS</strong>
-            <span>(C) 2026</span>
+            <span>&copy; 2026</span>
           </div>
         </div>
       </aside>
