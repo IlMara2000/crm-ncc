@@ -28,6 +28,7 @@ import {
   UserRound,
   UsersRound,
   Wrench,
+  X,
   type LucideIcon,
 } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
@@ -119,6 +120,7 @@ function App() {
   const [now] = useState(() => new Date())
   const [activeView, setActiveView] = useState<View>('dashboard')
   const [isServiceFormOpen, setServiceFormOpen] = useState(false)
+  const [isClearConfirmOpen, setClearConfirmOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState(toDateInputValue())
   const [cloudSession, setCloudSession] = useState<SupabaseSession | null>(null)
@@ -567,8 +569,13 @@ function App() {
     setToast('Pagamento registrato.')
   }
 
+  function requestClearWorkspace() {
+    setClearConfirmOpen(true)
+  }
+
   function clearWorkspaceData() {
     setWorkspace(resetWorkspaceState())
+    setClearConfirmOpen(false)
     setToast('Archivio svuotato e pronto per dati reali.')
   }
 
@@ -1012,7 +1019,7 @@ function App() {
         onImportBackup={importBackup}
         onRequestCloudLogin={requestCloudLogin}
         onUpdateSettings={updateSettings}
-        onClearWorkspace={clearWorkspaceData}
+        onClearWorkspace={requestClearWorkspace}
         onSignOutCloud={disconnectCloud}
       />
     ) : (
@@ -1090,7 +1097,7 @@ function App() {
             <h1>{formatDateLine(now)}</h1>
           </div>
           <div className="topbar-actions">
-            <button className="ghost-button" type="button" onClick={clearWorkspaceData}>
+            <button className="ghost-button" type="button" onClick={requestClearWorkspace}>
               Svuota dati
             </button>
             <button
@@ -1127,7 +1134,58 @@ function App() {
         />
       ) : null}
 
+      {isClearConfirmOpen ? (
+        <ClearWorkspaceDialog
+          onCancel={() => setClearConfirmOpen(false)}
+          onConfirm={clearWorkspaceData}
+        />
+      ) : null}
+
       {toast ? <div className="toast">{toast}</div> : null}
+    </div>
+  )
+}
+
+function ClearWorkspaceDialog({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section
+        className="modal confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="clear-workspace-title"
+      >
+        <div className="modal-header">
+          <div>
+            <p className="eyebrow">Conferma richiesta</p>
+            <h2 id="clear-workspace-title">Svuotare archivio locale?</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={onCancel} aria-label="Chiudi">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="confirm-body">
+          <p>
+            Questa azione rimuove clienti, servizi, mezzi, preventivi e fatture salvati in questo
+            browser. Prima di procedere esporta un backup se devi conservare i dati.
+          </p>
+          <div className="modal-actions">
+            <button className="ghost-button" type="button" onClick={onCancel}>
+              Annulla
+            </button>
+            <button className="secondary-button danger-action" type="button" onClick={onConfirm}>
+              Svuota archivio
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }
