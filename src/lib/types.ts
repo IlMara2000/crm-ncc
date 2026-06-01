@@ -8,6 +8,7 @@ export type View =
   | 'invoices'
   | 'data'
   | 'integrations'
+  | 'settings'
 
 export type ServiceStatus = 'confirmed' | 'pending' | 'active' | 'completed'
 

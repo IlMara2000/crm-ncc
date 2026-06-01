@@ -13,6 +13,8 @@ import {
   LayoutDashboard,
   Link2,
   MapPin,
+  Monitor,
+  Moon,
   Plane,
   Plus,
   Printer,
@@ -23,6 +25,7 @@ import {
   Settings2,
   ShieldCheck,
   Smartphone,
+  Sun,
   Upload,
   UserPlus,
   UserRound,
@@ -113,12 +116,53 @@ const navItems: Array<{ view: View; label: string; icon: LucideIcon }> = [
   { view: 'invoices', label: 'Fatture', icon: ReceiptText },
   { view: 'data', label: 'Dati', icon: Database },
   { view: 'integrations', label: 'Integrazioni', icon: Link2 },
+  { view: 'settings', label: 'Impostazioni', icon: Settings2 },
 ]
+
+type ThemePreference = 'light' | 'dark' | 'system'
+
+const THEME_STORAGE_KEY = 'ncc-crm-theme-preference-v1'
+
+const themeOptions: Array<{
+  value: ThemePreference
+  label: string
+  detail: string
+  icon: LucideIcon
+}> = [
+  {
+    value: 'light',
+    label: 'Chiaro',
+    detail: 'Sfondo luminoso e contrasto morbido per il lavoro diurno.',
+    icon: Sun,
+  },
+  {
+    value: 'dark',
+    label: 'Scuro',
+    detail: 'Superfici scure e testo chiaro per ridurre la fatica visiva.',
+    icon: Moon,
+  },
+  {
+    value: 'system',
+    label: 'Predefinito dispositivo',
+    detail: 'Segue automaticamente il tema impostato su browser o sistema.',
+    icon: Monitor,
+  },
+]
+
+function readThemePreference(): ThemePreference {
+  if (typeof window === 'undefined') return 'system'
+
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
+  return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system'
+}
 
 function App() {
   const [workspace, setWorkspace] = useState<WorkspaceState>(() => loadWorkspaceState())
   const [now] = useState(() => new Date())
   const [activeView, setActiveView] = useState<View>('dashboard')
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() =>
+    readThemePreference(),
+  )
   const [isServiceFormOpen, setServiceFormOpen] = useState(false)
   const [isClearConfirmOpen, setClearConfirmOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -131,6 +175,13 @@ function App() {
   const [isCloudHydrated, setCloudHydrated] = useState(false)
   const workspaceRef = useRef(workspace)
   const cloudSaveTimer = useRef<number | undefined>(undefined)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = themePreference
+    document.documentElement.style.colorScheme =
+      themePreference === 'system' ? 'light dark' : themePreference
+    window.localStorage.setItem(THEME_STORAGE_KEY, themePreference)
+  }, [themePreference])
 
   useEffect(() => {
     workspaceRef.current = workspace
@@ -1022,7 +1073,7 @@ function App() {
         onClearWorkspace={requestClearWorkspace}
         onSignOutCloud={disconnectCloud}
       />
-    ) : (
+    ) : activeView === 'integrations' ? (
       <IntegrationsView
         now={now}
         state={workspace}
@@ -1034,17 +1085,35 @@ function App() {
         onOpenInvoices={() => setActiveView('invoices')}
         onSyncGoogle={syncServiceToGoogle}
       />
+    ) : (
+      <SettingsView
+        themePreference={themePreference}
+        onThemePreferenceChange={setThemePreference}
+      />
     )
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">N</div>
-          <div>
-            <strong>NCC CRM</strong>
-            <span>Gestionale operativo</span>
+        <div className="sidebar-head">
+          <div className="brand">
+            <div className="brand-mark">N</div>
+            <div>
+              <strong>NCC CRM</strong>
+              <span>Gestionale operativo</span>
+            </div>
           </div>
+
+          <button
+            className={
+              activeView === 'settings' ? 'mobile-settings-button active' : 'mobile-settings-button'
+            }
+            type="button"
+            aria-label="Impostazioni"
+            onClick={() => setActiveView('settings')}
+          >
+            <Settings2 size={19} />
+          </button>
         </div>
 
         <nav className="nav-list" aria-label="Navigazione principale">
@@ -1115,15 +1184,17 @@ function App() {
         {activeContent}
       </main>
 
-      <button
-        className="mobile-fab"
-        type="button"
-        aria-label={serviceCreationTitle}
-        onClick={requestServiceCreation}
-        title={serviceCreationTitle}
-      >
-        <Plus size={22} />
-      </button>
+      {activeView !== 'settings' ? (
+        <button
+          className="mobile-fab"
+          type="button"
+          aria-label={serviceCreationTitle}
+          onClick={requestServiceCreation}
+          title={serviceCreationTitle}
+        >
+          <Plus size={22} />
+        </button>
+      ) : null}
 
       {isServiceFormOpen ? (
         <ServiceForm
@@ -2412,6 +2483,77 @@ function DataView({
           <button className="ghost-button" type="button" onClick={onClearWorkspace}>
             Svuota archivio
           </button>
+        </section>
+      </div>
+    </section>
+  )
+}
+
+function SettingsView({
+  themePreference,
+  onThemePreferenceChange,
+}: {
+  themePreference: ThemePreference
+  onThemePreferenceChange: (preference: ThemePreference) => void
+}) {
+  const activeTheme =
+    themeOptions.find((option) => option.value === themePreference) ?? themeOptions[2]
+
+  return (
+    <section className="view-stack">
+      <div className="section-toolbar">
+        <div>
+          <h2>Impostazioni</h2>
+          <p>Preferenze generali dell'interfaccia NCC CRM.</p>
+        </div>
+      </div>
+
+      <div className="settings-grid">
+        <section className="panel theme-panel">
+          <PanelHeader icon={Settings2} title="Tema generale" />
+          <div className="theme-grid" role="group" aria-label="Tema generale dell'app">
+            {themeOptions.map((option) => {
+              const Icon = option.icon
+              const isActive = option.value === themePreference
+
+              return (
+                <button
+                  className="theme-option"
+                  type="button"
+                  key={option.value}
+                  aria-pressed={isActive}
+                  onClick={() => onThemePreferenceChange(option.value)}
+                >
+                  <span className="theme-option-icon">
+                    <Icon size={20} />
+                  </span>
+                  <span>
+                    <strong>{option.label}</strong>
+                    <small>{option.detail}</small>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className="panel theme-panel">
+          <PanelHeader icon={ShieldCheck} title="Tema attivo" />
+          <div className="theme-summary">
+            <div>
+              <span>Preferenza salvata</span>
+              <strong>{activeTheme.label}</strong>
+            </div>
+            <div className="theme-preview" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+          <p className="empty-copy">
+            La scelta resta memorizzata in questo browser e viene applicata a cruscotto, agenda,
+            modali, tabelle e navigazione mobile.
+          </p>
         </section>
       </div>
     </section>
