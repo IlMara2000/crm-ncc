@@ -15,6 +15,7 @@ import {
   MapPin,
   Monitor,
   Moon,
+  MoreHorizontal,
   Plane,
   Plus,
   Printer,
@@ -106,7 +107,9 @@ import type {
   WorkspaceState,
 } from './lib/types'
 
-const navItems: Array<{ view: View; label: string; icon: LucideIcon }> = [
+type NavItem = { view: View; label: string; icon: LucideIcon }
+
+const navItems: NavItem[] = [
   { view: 'dashboard', label: 'Cruscotto', icon: LayoutDashboard },
   { view: 'agenda', label: 'Agenda', icon: CalendarDays },
   { view: 'services', label: 'Servizi', icon: Route },
@@ -118,6 +121,33 @@ const navItems: Array<{ view: View; label: string; icon: LucideIcon }> = [
   { view: 'integrations', label: 'Integrazioni', icon: Link2 },
   { view: 'settings', label: 'Impostazioni', icon: Settings2 },
 ]
+
+const mobilePrimaryNavItems: NavItem[] = [
+  { view: 'dashboard', label: 'Home', icon: LayoutDashboard },
+  { view: 'agenda', label: 'Agenda', icon: CalendarDays },
+  { view: 'services', label: 'Servizi', icon: Route },
+  { view: 'customers', label: 'Clienti', icon: UsersRound },
+]
+
+const mobileMoreNavItems: NavItem[] = [
+  { view: 'quotes', label: 'Preventivi', icon: FileText },
+  { view: 'vehicles', label: 'Mezzi', icon: Car },
+  { view: 'invoices', label: 'Fatture', icon: ReceiptText },
+  { view: 'data', label: 'Dati', icon: Database },
+  { view: 'integrations', label: 'Integrazioni', icon: Link2 },
+  { view: 'settings', label: 'Impostazioni', icon: Settings2 },
+]
+
+function isMobileMoreView(view: View) {
+  return (
+    view === 'quotes' ||
+    view === 'vehicles' ||
+    view === 'invoices' ||
+    view === 'data' ||
+    view === 'integrations' ||
+    view === 'settings'
+  )
+}
 
 type ThemePreference = 'light' | 'dark' | 'system'
 
@@ -165,6 +195,7 @@ function App() {
   )
   const [isServiceFormOpen, setServiceFormOpen] = useState(false)
   const [isClearConfirmOpen, setClearConfirmOpen] = useState(false)
+  const [isMobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState(toDateInputValue())
   const [cloudSession, setCloudSession] = useState<SupabaseSession | null>(null)
@@ -182,6 +213,16 @@ function App() {
       themePreference === 'system' ? 'light dark' : themePreference
     window.localStorage.setItem(THEME_STORAGE_KEY, themePreference)
   }, [themePreference])
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isMobileMenuOpen])
 
   useEffect(() => {
     workspaceRef.current = workspace
@@ -336,18 +377,23 @@ function App() {
 
   function requestServiceCreation() {
     if (workspace.customers.length === 0) {
-      setActiveView('customers')
+      selectView('customers')
       setToast('Aggiungi il primo cliente, poi potrai creare il servizio.')
       return
     }
 
     if (workspace.vehicles.length === 0) {
-      setActiveView('vehicles')
+      selectView('vehicles')
       setToast('Aggiungi il primo mezzo, poi potrai creare il servizio.')
       return
     }
 
     setServiceFormOpen(true)
+  }
+
+  function selectView(view: View) {
+    setActiveView(view)
+    setMobileMenuOpen(false)
   }
 
   function addService(draft: ServiceDraft) {
@@ -1081,8 +1127,8 @@ function App() {
         onConnectGoogleCalendar={connectGoogleCalendar}
         onCopyGooglePayload={copyGooglePayload}
         onExportAll={exportAllIcs}
-        onOpenData={() => setActiveView('data')}
-        onOpenInvoices={() => setActiveView('invoices')}
+        onOpenData={() => selectView('data')}
+        onOpenInvoices={() => selectView('invoices')}
         onSyncGoogle={syncServiceToGoogle}
       />
     ) : (
@@ -1110,7 +1156,7 @@ function App() {
             }
             type="button"
             aria-label="Impostazioni"
-            onClick={() => setActiveView('settings')}
+            onClick={() => selectView('settings')}
           >
             <Settings2 size={19} />
           </button>
@@ -1124,7 +1170,7 @@ function App() {
                 className={activeView === item.view ? 'nav-item active' : 'nav-item'}
                 key={item.view}
                 type="button"
-                onClick={() => setActiveView(item.view)}
+                onClick={() => selectView(item.view)}
               >
                 <Icon size={18} />
                 <span>{item.label}</span>
@@ -1142,7 +1188,7 @@ function App() {
       </aside>
 
       <nav className="mobile-tabbar" aria-label="Navigazione mobile">
-        {navItems.map((item) => {
+        {mobilePrimaryNavItems.map((item) => {
           const Icon = item.icon
           return (
             <button
@@ -1150,13 +1196,25 @@ function App() {
               key={item.view}
               type="button"
               aria-current={activeView === item.view ? 'page' : undefined}
-              onClick={() => setActiveView(item.view)}
+              onClick={() => selectView(item.view)}
             >
               <Icon size={18} />
               <span>{item.label}</span>
             </button>
           )
         })}
+        <button
+          className={
+            isMobileMoreView(activeView) || isMobileMenuOpen ? 'nav-item active' : 'nav-item'
+          }
+          type="button"
+          aria-current={isMobileMoreView(activeView) ? 'page' : undefined}
+          aria-expanded={isMobileMenuOpen}
+          onClick={() => setMobileMenuOpen((current) => !current)}
+        >
+          <MoreHorizontal size={18} />
+          <span>Altro</span>
+        </button>
       </nav>
 
       <main className="main-surface">
@@ -1184,7 +1242,16 @@ function App() {
         {activeContent}
       </main>
 
-      {activeView !== 'settings' ? (
+      {isMobileMenuOpen ? (
+        <MobileMoreMenu
+          activeView={activeView}
+          items={mobileMoreNavItems}
+          onClose={() => setMobileMenuOpen(false)}
+          onSelect={selectView}
+        />
+      ) : null}
+
+      {activeView !== 'settings' && !isMobileMenuOpen ? (
         <button
           className="mobile-fab"
           type="button"
@@ -1255,6 +1322,58 @@ function ClearWorkspaceDialog({
               Svuota archivio
             </button>
           </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function MobileMoreMenu({
+  activeView,
+  items,
+  onClose,
+  onSelect,
+}: {
+  activeView: View
+  items: NavItem[]
+  onClose: () => void
+  onSelect: (view: View) => void
+}) {
+  return (
+    <div className="mobile-menu-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="mobile-menu-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mobile-menu-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <span className="mobile-menu-grip" aria-hidden="true" />
+        <div className="mobile-menu-header">
+          <h2 id="mobile-menu-title">Altro</h2>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Chiudi menu">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="mobile-menu-grid">
+          {items.map((item) => {
+            const Icon = item.icon
+            return (
+              <button
+                className={
+                  activeView === item.view ? 'mobile-menu-item active' : 'mobile-menu-item'
+                }
+                key={item.view}
+                type="button"
+                aria-current={activeView === item.view ? 'page' : undefined}
+                onClick={() => onSelect(item.view)}
+              >
+                <Icon size={20} />
+                <span>{item.label}</span>
+              </button>
+            )
+          })}
         </div>
       </section>
     </div>
