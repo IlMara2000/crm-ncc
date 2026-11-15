@@ -35,9 +35,12 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Suspense, lazy, type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import { ChartPanelSkeleton } from './components/ChartPanelSkeleton'
 import { ServiceForm } from './components/ServiceForm'
+import { StatsCard } from './components/StatsCard'
 import {
   StatusBadge,
 } from './components/StatusBadge'
@@ -106,6 +109,13 @@ import type {
   View,
   WorkspaceState,
 } from './lib/types'
+
+// Il grafico trascina recharts (circa 300 kB): carichiamo il pannello a parte.
+const loadRevenueChart = () => import('./components/RevenueChart')
+
+const RevenueChart = lazy(() =>
+  loadRevenueChart().then((module) => ({ default: module.RevenueChart })),
+)
 
 type NavItem = { view: View; label: string; icon: LucideIcon }
 
@@ -1239,7 +1249,18 @@ function App() {
           </div>
         </header>
 
-        {activeContent}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            className="view-transition"
+            key={activeView}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+          >
+            {activeContent}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {isMobileMenuOpen ? (
@@ -1409,17 +1430,23 @@ function DashboardView({
   const nowMs = now.getTime()
   const today = now
   const todayServices = services.filter((service) => isSameDay(service.start, today))
+  const yesterdayServices = services.filter((service) =>
+    isSameDay(service.start, new Date(nowMs - 24 * 60 * 60 * 1000)),
+  )
   const upcoming = services.find((service) => new Date(service.end).getTime() >= nowMs)
   const openInvoices = state.invoices.filter((invoice) => invoice.status !== 'paid')
-  const weekRevenue = services
-    .filter((service) => {
-      const start = new Date(service.start).getTime()
-      return (
-        start >= nowMs - 24 * 60 * 60 * 1000 &&
-        start <= nowMs + 7 * 24 * 60 * 60 * 1000
-      )
-    })
-    .reduce((sum, service) => sum + service.price, 0)
+  const revenueInRange = (fromDays: number, toDays: number) =>
+    services
+      .filter((service) => {
+        const start = new Date(service.start).getTime()
+        return (
+          start >= nowMs + fromDays * 24 * 60 * 60 * 1000 &&
+          start <= nowMs + toDays * 24 * 60 * 60 * 1000
+        )
+      })
+      .reduce((sum, service) => sum + service.price, 0)
+  const weekRevenue = revenueInRange(-1, 7)
+  const previousWeekRevenue = revenueInRange(-8, -1)
   const confirmedRate =
     services.length > 0
       ? Math.round(
@@ -1428,6 +1455,13 @@ function DashboardView({
             100,
         )
       : 0
+  const openInvoiceGross = openInvoices.reduce((sum, invoice) => sum + invoice.gross, 0)
+  const percentChange = (current: number, previous: number) =>
+    previous === 0
+      ? current === 0
+        ? 0
+        : 100
+      : Math.round(((current - previous) / previous) * 100)
 
   return (
     <section className="view-stack">
@@ -1446,31 +1480,53 @@ function DashboardView({
       </div>
 
       <div className="stats-grid">
-        <StatCard
+        <StatsCard
+          index={0}
+          tone="teal"
           icon={Clock3}
           label="Servizi oggi"
           value={`${todayServices.length}`}
+          countTo={todayServices.length}
+          formatValue={(current) => `${Math.round(current)}`}
+          trend={percentChange(todayServices.length, yesterdayServices.length)}
           detail={`${todayServices.filter((service) => service.status === 'confirmed').length} confermati`}
         />
-        <StatCard
+        <StatsCard
+          index={1}
+          tone="amber"
           icon={CircleDollarSign}
           label="Valore prossimi 7 giorni"
           value={formatMoney(weekRevenue)}
+          countTo={weekRevenue}
+          formatValue={formatMoney}
+          trend={percentChange(weekRevenue, previousWeekRevenue)}
           detail="lordo stimato"
         />
-        <StatCard
+        <StatsCard
+          index={2}
+          tone="blue"
           icon={ReceiptText}
           label="Fatture aperte"
           value={`${openInvoices.length}`}
-          detail={formatMoney(openInvoices.reduce((sum, invoice) => sum + invoice.gross, 0))}
+          countTo={openInvoices.length}
+          formatValue={(current) => `${Math.round(current)}`}
+          detail={formatMoney(openInvoiceGross)}
         />
-        <StatCard
+        <StatsCard
+          index={3}
+          tone="violet"
           icon={CheckCircle2}
           label="Conferme"
           value={`${confirmedRate}%`}
+          countTo={confirmedRate}
+          formatValue={(current) => `${Math.round(current)}%`}
           detail="servizi confermati"
         />
       </div>
+
+      <Suspense fallback={<ChartPanelSkeleton />}>
+        <RevenueChart services={services} now={now} />
+      </Suspense>
 
       <section className="panel">
         <PanelHeader icon={Route} title="Servizi in evidenza" />
@@ -1655,9 +1711,9 @@ function QuotesView({
       </div>
 
       <div className="stats-grid compact-stats">
-        <StatCard icon={FileText} label="Preventivi" value={`${state.quotes.length}`} detail="archivio locale" />
-        <StatCard icon={Send} label="Aperti" value={formatMoney(openTotal)} detail="bozze e inviati" />
-        <StatCard icon={CheckCircle2} label="Accettati" value={formatMoney(acceptedTotal)} detail="valore confermato" />
+        <StatsCard icon={FileText} label="Preventivi" value={`${state.quotes.length}`} detail="archivio locale" />
+        <StatsCard icon={Send} label="Aperti" value={formatMoney(openTotal)} detail="bozze e inviati" />
+        <StatsCard icon={CheckCircle2} label="Accettati" value={formatMoney(acceptedTotal)} detail="valore confermato" />
       </div>
 
       <div className="quote-layout">
@@ -2024,9 +2080,9 @@ function CustomersView({
               </div>
 
               <div className="stats-grid compact-stats">
-                <StatCard icon={Route} label="Servizi" value={`${customerServices.length}`} detail="storico cliente" />
-                <StatCard icon={CircleDollarSign} label="Valore" value={formatMoney(gross)} detail="lordo corse" />
-                <StatCard icon={ReceiptText} label="Fatture" value={`${customerInvoices.length}`} detail="collegate" />
+                <StatsCard icon={Route} label="Servizi" value={`${customerServices.length}`} detail="storico cliente" />
+                <StatsCard icon={CircleDollarSign} label="Valore" value={formatMoney(gross)} detail="lordo corse" />
+                <StatsCard icon={ReceiptText} label="Fatture" value={`${customerInvoices.length}`} detail="collegate" />
               </div>
 
               <section className="nested-section">
@@ -2111,9 +2167,9 @@ function VehiclesView({
       </div>
 
       <div className="stats-grid compact-stats">
-        <StatCard icon={Car} label="Disponibili" value={`${availableVehicles.length}/${state.vehicles.length}`} detail="mezzi pronti" />
-        <StatCard icon={Fuel} label="Costi registrati" value={formatMoney(expensesTotal)} detail="spese operative" />
-        <StatCard
+        <StatsCard icon={Car} label="Disponibili" value={`${availableVehicles.length}/${state.vehicles.length}`} detail="mezzi pronti" />
+        <StatsCard icon={Fuel} label="Costi registrati" value={formatMoney(expensesTotal)} detail="spese operative" />
+        <StatsCard
           icon={ShieldCheck}
           label="Prossima scadenza"
           value={nextDeadline ? formatShortDate(nextDeadline.date) : '-'}
@@ -2430,9 +2486,9 @@ function DataView({
       </div>
 
       <div className="stats-grid compact-stats">
-        <StatCard icon={Database} label="Archivio locale" value={storedSize} detail="stimato nel browser" />
-        <StatCard icon={Route} label="Servizi" value={`${state.services.length}`} detail="prenotazioni salvate" />
-        <StatCard icon={UsersRound} label="Clienti" value={`${state.customers.length}`} detail="rubrica locale" />
+        <StatsCard icon={Database} label="Archivio locale" value={storedSize} detail="stimato nel browser" />
+        <StatsCard icon={Route} label="Servizi" value={`${state.services.length}`} detail="prenotazioni salvate" />
+        <StatsCard icon={UsersRound} label="Clienti" value={`${state.customers.length}`} detail="rubrica locale" />
       </div>
 
       <div className="data-grid">
@@ -2709,9 +2765,9 @@ function InvoicesView({
       </div>
 
       <div className="stats-grid">
-        <StatCard icon={ReceiptText} label="Da incassare" value={formatMoney(openTotal)} detail="fatture aperte" />
-        <StatCard icon={CheckCircle2} label="Incassato" value={formatMoney(paidTotal)} detail="fatture pagate" />
-        <StatCard icon={FileText} label="Documenti" value={`${state.invoices.length}`} detail="archivio locale" />
+        <StatsCard icon={ReceiptText} label="Da incassare" value={formatMoney(openTotal)} detail="fatture aperte" />
+        <StatsCard icon={CheckCircle2} label="Incassato" value={formatMoney(paidTotal)} detail="fatture pagate" />
+        <StatsCard icon={FileText} label="Documenti" value={`${state.invoices.length}`} detail="archivio locale" />
       </div>
 
       <section className="panel">
@@ -3189,29 +3245,6 @@ function DayTimeline({ services, state }: WorkspaceProps) {
         })}
       </div>
     </div>
-  )
-}
-
-function StatCard({
-  detail,
-  icon: Icon,
-  label,
-  value,
-}: {
-  detail: string
-  icon: LucideIcon
-  label: string
-  value: string
-}) {
-  return (
-    <section className="stat-card">
-      <div className="stat-icon">
-        <Icon size={18} />
-      </div>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{detail}</small>
-    </section>
   )
 }
 

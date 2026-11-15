@@ -27,6 +27,22 @@
   --overlay: rgba(31, 43, 40, 0.28);
   --shadow-soft: rgba(31, 43, 40, 0.07);
   --shadow-strong: rgba(31, 43, 40, 0.2);
+  --glass-surface: rgba(251, 252, 250, 0.74);
+  --glass-border: rgba(31, 43, 40, 0.09);
+  --glass-sheen: rgba(255, 255, 255, 0.8);
+  --tone-teal-from: #2c6b60;
+  --tone-teal-to: #6fa89b;
+  --tone-amber-from: #94652a;
+  --tone-amber-to: #d3a463;
+  --tone-blue-from: #44658f;
+  --tone-blue-to: #8dabce;
+  --tone-violet-from: #5a4c85;
+  --tone-violet-to: #a698cf;
+  --trend-up: #2c7a58;
+  --trend-up-soft: #e1f1e8;
+  --trend-down: #a0443b;
+  --trend-down-soft: #f8e7e4;
+  --chart-tooltip: rgba(251, 252, 250, 0.96);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   line-height: 1.4;
@@ -69,6 +85,22 @@
   --overlay: rgba(0, 0, 0, 0.48);
   --shadow-soft: rgba(0, 0, 0, 0.24);
   --shadow-strong: rgba(0, 0, 0, 0.42);
+  --glass-surface: rgba(23, 34, 45, 0.72);
+  --glass-border: rgba(148, 176, 196, 0.16);
+  --glass-sheen: rgba(120, 188, 224, 0.12);
+  --tone-teal-from: #2a5f6b;
+  --tone-teal-to: #5fa7b8;
+  --tone-amber-from: #7a5a25;
+  --tone-amber-to: #d3a964;
+  --tone-blue-from: #2f5272;
+  --tone-blue-to: #6fa8d6;
+  --tone-violet-from: #4a3f70;
+  --tone-violet-to: #9d8ed0;
+  --trend-up: #6fd1a3;
+  --trend-up-soft: rgba(111, 209, 163, 0.16);
+  --trend-down: #e58b82;
+  --trend-down-soft: rgba(229, 139, 130, 0.16);
+  --chart-tooltip: rgba(23, 34, 45, 0.96);
   color-scheme: dark;
 }
 
@@ -106,6 +138,22 @@
     --overlay: rgba(0, 0, 0, 0.48);
     --shadow-soft: rgba(0, 0, 0, 0.24);
     --shadow-strong: rgba(0, 0, 0, 0.42);
+    --glass-surface: rgba(23, 34, 45, 0.72);
+    --glass-border: rgba(148, 176, 196, 0.16);
+    --glass-sheen: rgba(120, 188, 224, 0.12);
+    --tone-teal-from: #2a5f6b;
+    --tone-teal-to: #5fa7b8;
+    --tone-amber-from: #7a5a25;
+    --tone-amber-to: #d3a964;
+    --tone-blue-from: #2f5272;
+    --tone-blue-to: #6fa8d6;
+    --tone-violet-from: #4a3f70;
+    --tone-violet-to: #9d8ed0;
+    --trend-up: #6fd1a3;
+    --trend-up-soft: rgba(111, 209, 163, 0.16);
+    --trend-down: #e58b82;
+    --trend-down-soft: rgba(229, 139, 130, 0.16);
+    --chart-tooltip: rgba(23, 34, 45, 0.96);
   }
 }
 
