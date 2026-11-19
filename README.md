@@ -78,3 +78,11 @@ FATTURE_IN_CLOUD_COMPANY_ID
 
 Il connettore e predisposto per Fatture in Cloud API v2. Se token e company ID non sono configurati,
 l'app mostra un errore esplicito invece di creare documenti finti.
+
+## Hook pre-commit
+
+Dopo il clone abilita il controllo che blocca il commit di file `.env*`:
+
+```sh
+./scripts/install-hooks.sh
+```

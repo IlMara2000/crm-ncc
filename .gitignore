@@ -23,3 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# credenziali: mai nel repo
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
